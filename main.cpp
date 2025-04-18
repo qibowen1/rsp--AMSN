@@ -11,6 +11,12 @@
 #include <sstream>
 #include <string>
 #include <random>  // 随机数库
+#include <filesystem>
+#include <chrono>  // 添加时间统计头文件
+#include <fstream>  // 添加文件流头文件
+#include <iomanip>
+#include <ctime>
+namespace fs = std::filesystem;
 using namespace std;
 
 const double INF = numeric_limits<double>::max(); // 定义无穷大常量
@@ -60,12 +66,8 @@ private:
     RSPGraph graph;                          // 问题图实例
 	int alpha ;                        // 分配权重系数（可调节）
     Solution best;                            // 历史最优解
-
-    // 算法参数配置
-    const int NUM_OPS = 6;                   // 邻域操作类型总数
     // 新增VNS相关参数
     const int VNS_MAX_LEVEL = 3;        // 最大邻域层级
-    const int VNS_LOCAL_SEARCH_STEPS = 50; // 本地搜索步数
 
 public:
     AMNSSolver(const RSPGraph& g, int a) : graph(g), alpha(a) { // 构造函数初始化
@@ -79,11 +81,10 @@ public:
         current = greedy_construction(); // 生成贪婪初始解
         double curr_min = current.total_cost();
         double temp = 1000.0; // 初始温度
-        const double cooling_rate = 0.995;
+        const double cooling_rate = 0.999;
         for (int iter = 0; iter < max_iter; ++iter) {
 			Solution neighbor = variable_neighborhood_search(current); // 生成邻域解
             evaluate(neighbor);              // 重新计算新解的成本
-			//cout << "迭代 #" << iter << " 当前成本: " << neighbor.total_cost() << endl;
 			//cout << "neighbor.total_cost():" << neighbor.total_cost() << "current.total_cost():" << current.total_cost() <<"当前最优："<<curr_min<<endl;
             // 模拟退火接受准则
             double delta = neighbor.total_cost() - current.total_cost();
@@ -131,11 +132,9 @@ private:
 
         while (!candidates.empty()) {         // 逐步构建环路径
             vector<pair<int, double>> candidate_scores; // 候选节点评分集合
-
             // 计算每个候选节点的插入评分
             for (int v : candidates) {
                 double min_ring = INF, min_assign = INF;
-
                 // 1. 计算插入环的最小路由成本变化
                 for (int i = 0; i < s.ring.size(); ++i) {
                     int next = (i + 1) % s.ring.size();
@@ -163,10 +162,9 @@ private:
             sort(candidate_scores.begin(), candidate_scores.end(),
                 [](auto& a, auto& b) { return a.second < b.second; });
 
-            int rcl_size = (int)(candidate_scores.size() * 0.2); // RCL大小取前80%
+            int rcl_size = (int)(candidate_scores.size() * 0.5); // RCL大小取前80%
             if (rcl_size == 0) break;
             int selected = candidate_scores[rand() % rcl_size].first; // 随机选择RCL中的节点
-			//cout << "选择节点: " << selected << endl;
             insert_node(s, selected);         // 执行节点插入
             candidates.erase(remove(candidates.begin(), candidates.end(), selected), candidates.end());
             evaluate(s);  // 重新计算总成本
@@ -184,7 +182,6 @@ private:
                 prev_cost = s.total_cost(); // 环长度不足时继续构建
             }
         }
-
         /* 确保环的最小长度约束 */
         while (s.ring.size() < 3 && !candidates.empty()) {
             int v = candidates.back();
@@ -227,7 +224,6 @@ private:
             int vi = rand() % (graph.nodes.size() - 1) + 1; // 生成1~n-1的随机数
             int vj = rand() % (graph.nodes.size() - 1) + 1;
             while (vj == vi) vj = rand() % (graph.nodes.size() - 1) + 1;
-
             bool vi_in = temp.in_ring[vi];
             bool vj_in = temp.in_ring[vj];
 
@@ -292,13 +288,13 @@ private:
             if (new_assign == -1) continue;
 
             // 更新分配关系
-            s.assign_cost += graph.assign_cost[u][new_assign] -
-                graph.assign_cost[u][s.assignments[u]];
+            s.assign_cost += (10-alpha)*(graph.assign_cost[u][new_assign] -
+                graph.assign_cost[u][s.assignments[u]]);
             s.assignments[u] = new_assign;
         }
     }
     // 新的局部搜索过程（所有领域）
-    Solution local_search_v2(Solution s) {
+    Solution local_search_v2(Solution s) {//TODO a=9死循环
         Solution current = s;
         evaluate(current);
         vector<Solution> H;
@@ -307,14 +303,19 @@ private:
             vector<Solution> Hadd = generate_add_neighbors(current);
             vector<Solution> Hdrop = generate_drop_neighbors(current);
             vector<Solution> Hadd_drop = generate_add_drop_neighbors(current);
-            vector<Solution> Hopt = generate_opt_neighbors(current);
-
+            vector<Solution> Hopt;
+			if (current.ring.size() > 3)
+                Hopt = generate_opt_neighbors(current);
+            /*vector<Solution> H3opt;
+            if (current.ring.size() >= 6)
+                H3opt=generate_3opt_neighbors(current);*/
             // 合并邻域解集
             H.clear();
             H.insert(H.end(), Hadd.begin(), Hadd.end());
             H.insert(H.end(), Hdrop.begin(), Hdrop.end());
             H.insert(H.end(), Hadd_drop.begin(), Hadd_drop.end());
-            H.insert(H.end(), Hopt.begin(), Hopt.end());
+            H.insert(H.end(), Hopt.begin(), Hopt.end());//这里2opt其实只会往小的地方走，局部最优解 TODO
+            //H.insert(H.end(), H3opt.begin(), H3opt.end());
 
             if (!H.empty()) {
                 // 选择最优候选解
@@ -347,7 +348,7 @@ private:
                 Solution neighbor = s;
                 insert_node(neighbor, v);
                 evaluate(neighbor);
-                if (neighbor.total_cost() < s.total_cost())
+                if (neighbor.total_cost() < s.total_cost())//TODO
                     neighbors.push_back(neighbor);
             }
             return neighbors;
@@ -413,6 +414,20 @@ private:
         return neighbors;
     }
 
+    // 生成优化邻域（3-opt等）
+    vector<Solution> generate_3opt_neighbors(Solution s) {
+        vector<Solution> neighbors;
+
+        // 1. 增强版优化（1个高质量解）
+        Solution enhanced_neighbor = s;
+        randomized_three_opt(enhanced_neighbor);
+        evaluate(enhanced_neighbor);
+        if (enhanced_neighbor.total_cost() < s.total_cost())
+            neighbors.push_back(enhanced_neighbor);
+
+        return neighbors;
+    }
+
     // 邻域操作1：随机插入未使用的节点
     void insert_random_node(Solution& s) {
         int v = random_unused_node(s);         // 随机选择不在环中的节点
@@ -458,9 +473,9 @@ private:
 
             // 更新分配成本（差分计算优化性能）
             if (s.assignments.count(u)) {
-                s.assign_cost -= graph.assign_cost[u][s.assignments[u]];
+                s.assign_cost -= (10-alpha)*graph.assign_cost[u][s.assignments[u]];
             }
-            s.assign_cost += graph.assign_cost[u][new_assign];
+            s.assign_cost += (10 - alpha) * graph.assign_cost[u][new_assign];
 
             // 更新分配关系
             s.assignments[u] = new_assign;
@@ -511,7 +526,7 @@ private:
             reverse(s.ring.begin() + best_i + 1, s.ring.begin() + best_j + 1);
         }
     }
-
+    //2opt
     void randomized_two_opt(Solution& s) {
         const int max_attempts = 50; // 最大尝试次数
         int attempts = 0;
@@ -547,6 +562,93 @@ private:
                 attempts++;
             }
         }
+    }
+
+    //3opt
+    void randomized_three_opt(Solution& s) {
+        const int MAX_ATTEMPTS = 30; // 最大无改进尝试次数
+        int attempts = 0;
+        bool improved;
+        double original_cost = s.routing_cost;
+
+        do {
+            improved = false;
+
+            // 随机选择三个不同的边
+            int i = rand() % (s.ring.size() - 5);
+            int j = i + 1 + rand() % (s.ring.size() - i - 4);
+            int k = j + 1 + rand() % (s.ring.size() - j - 3);
+
+            // 获取当前路径段的实际节点索引
+            int a = s.ring[i];
+            int b = s.ring[(i + 1) % s.ring.size()];
+            int c = s.ring[j];
+            int d = s.ring[(j + 1) % s.ring.size()];
+            int e = s.ring[k];
+            int f = s.ring[(k + 1) % s.ring.size()];
+
+            // 计算原始段的成本
+            double original_segment = alpha * (
+                graph.routing_cost[a][b] +
+                graph.routing_cost[c][d] +
+                graph.routing_cost[e][f]
+                );
+
+            // 七种可能的连接方式（实际有效四种）
+            vector<pair<double, vector<int>>> candidates;
+
+            // 方式1：反转中间两段
+            vector<int> path1 = s.ring;
+            reverse(path1.begin() + i + 1, path1.begin() + j + 1);
+            reverse(path1.begin() + j + 1, path1.begin() + k + 1);
+            double cost1 = calculate_segment_cost(path1, i, k);
+
+            // 方式2：反转第三段
+            vector<int> path2 = s.ring;
+            reverse(path2.begin() + j + 1, path2.begin() + k + 1);
+            double cost2 = calculate_segment_cost(path2, i, k);
+
+            // 方式3：反转前两段
+            vector<int> path3 = s.ring;
+            reverse(path3.begin() + i + 1, path3.begin() + j + 1);
+            double cost3 = calculate_segment_cost(path3, i, k);
+
+            // 方式4：反转全部三段
+            vector<int> path4 = s.ring;
+            reverse(path4.begin() + i + 1, path4.begin() + k + 1);
+            double cost4 = calculate_segment_cost(path4, i, k);
+
+            // 找到最佳改进
+            double best_cost = min({ cost1, cost2, cost3, cost4 });
+            double gain = original_segment - best_cost;
+
+            if (gain > 0) {
+                // 应用最佳改进
+                if (best_cost == cost1) s.ring = path1;
+                else if (best_cost == cost2) s.ring = path2;
+                else if (best_cost == cost3) s.ring = path3;
+                else s.ring = path4;
+
+                // 更新路由成本（差分更新）
+                s.routing_cost += (best_cost - original_segment) / alpha;
+                improved = true;
+                attempts = 0; // 重置计数器
+            }
+            else {
+                attempts++;
+            }
+
+        } while (improved || attempts < MAX_ATTEMPTS);
+    }
+
+    // 辅助函数：计算路径段成本（优化性能）
+    double calculate_segment_cost(const vector<int>& path, int start, int end) {
+        double cost = 0;
+        for (int i = start; i <= end; ++i) {
+            int j = (i + 1) % path.size();
+            cost += graph.routing_cost[path[i]][path[j]];
+        }
+        return alpha * cost;
     }
 
     // 随机选择未使用的节点（返回-1表示无可用节点）
@@ -615,7 +717,7 @@ private:
         // 更新分配关系（如果新节点更近）
         for (int u = 0; u < graph.nodes.size(); ++u) {
             if (!s.in_ring[u] && graph.assign_cost[u][v] < graph.assign_cost[u][s.assignments[u]]) {
-                s.assign_cost += graph.assign_cost[u][v] - graph.assign_cost[u][s.assignments[u]];
+                s.assign_cost += (10 - alpha)*(graph.assign_cost[u][v] - graph.assign_cost[u][s.assignments[u]]);
                 s.assignments[u] = v;          // 更新分配关系
             }
         }
@@ -695,52 +797,182 @@ RSPGraph parseTSPLIB(const string& filename) {
 
     return graph;
 }
+//int main() {
+//    const int ITER_PER_RUN = 50;  // 每次运行迭代次数
+//    Solution global_best;          // 全局最优解
+//    double min_cost = INF;         // 最小成本跟踪
+//	int max_iter = 100;           // 最大迭代次数
+//    RSPGraph graph = parseTSPLIB("E:/code/c/tsplib/st70.tsp"); //berlin52 eil51 st70
+//    for (int run = 0; run < max_iter; ++run) {
+//		cout << "\n======= 运行 #" << run + 1 << " =======\n";
+//        // 创建新求解器实例
+//        AMNSSolver solver(graph, 9);
+//
+//        // 执行迭代优化
+//        solver.solve(ITER_PER_RUN);
+//
+//        // 获取当前最优解
+//        Solution current = solver.getBestSolution();
+//
+//        // 更新全局最优
+//        if (current.total_cost() < min_cost) {
+//            global_best = current;
+//            min_cost = current.total_cost();
+//        }
+//		cout << "迭代 #" << run << " 当前最优解成本: " << min_cost
+//			<< " (路由: " << global_best.routing_cost
+//			<< ", 分配: " << global_best.assign_cost << ")" << endl;
+//    }
+//    // 输出最终结果
+//    cout << "\n======= 全局最优解 =======";
+//    cout << "\n总成本: " << global_best.total_cost()
+//        << " (路由: " << global_best.routing_cost
+//        << ", 分配: " << global_best.assign_cost << ")\n";
+//
+//    // 输出环路径
+//    cout << "\n环路径: 0";
+//    for (int node : global_best.ring) {
+//        if (node != 0) cout << " -> " << node; // 跳过重复的0
+//    }
+//    cout << " -> 0" << endl;
+//
+//    // 输出分配关系
+//    cout << "\n分配关系:" << endl;
+//    for (int u = 0; u < graph.nodes.size(); ++u) {
+//        if (!global_best.in_ring[u]) {
+//            cout << "节点" << u << "\t→ 环节点" << global_best.assignments[u] << endl;
+//        }
+//    }
+//
+//    return 0;
+//}
+
+// 定义结果存储结构
+struct Result {
+    string filename;
+    int alpha;
+    double total_cost;
+    double routing_cost;
+    double assign_cost;
+    long long duration_ms;
+    string ring_path;
+};
+
 int main() {
-    const int ITER_PER_RUN = 50;  // 每次运行迭代次数
-    Solution global_best;          // 全局最优解
-    double min_cost = INF;         // 最小成本跟踪
-	int max_iter = 100;           // 最大迭代次数
-    RSPGraph graph = parseTSPLIB("E:/code/c/tsplib/eil51.tsp"); //berlin52 eil51
-    for (int run = 0; run < max_iter; ++run) {
-		cout << "\n======= 运行 #" << run + 1 << " =======\n";
-        // 创建新求解器实例
-        AMNSSolver solver(graph, 3);
+    const int ITER_PER_RUN = 30;
+    const int MAX_ITER = 100;
+    const string TSP_DIR = "E:/code/c/tsplib/"; // 修改为你的TSP目录路径
+    const vector<int> ALPHAS = { 3, 5, 7, 9 };  // 需要测试的alpha值列表
+    vector<Result> all_results;  // 存储所有结果
 
-        // 执行迭代优化
-        solver.solve(ITER_PER_RUN);
+    // 生成带时间的文件名
+    auto now = chrono::system_clock::now();
+    time_t now_time = chrono::system_clock::to_time_t(now);
+    struct tm local_time;
+    localtime_s(&local_time, &now_time);  // Windows安全版本
+    ostringstream filename_ss;
+    filename_ss << "E:/code/c/c++/rsp-result/results_"
+        << put_time(&local_time, "%m%d_%H%M")  // 月日_时分
+        << ".csv";
 
-        // 获取当前最优解
-        Solution current = solver.getBestSolution();
-
-        // 更新全局最优
-        if (current.total_cost() < min_cost) {
-            global_best = current;
-            min_cost = current.total_cost();
-        }
-		cout << "迭代 #" << run << " 当前最优解成本: " << min_cost
-			<< " (路由: " << global_best.routing_cost
-			<< ", 分配: " << global_best.assign_cost << ")" << endl;
+    // 创建并打开输出文件
+    ofstream out_file(filename_ss.str());
+    if (!out_file) {
+        cerr << "无法创建输出文件！" << endl;
+        return 1;
     }
-    // 输出最终结果
-    cout << "\n======= 全局最优解 =======";
-    cout << "\n总成本: " << global_best.total_cost()
-        << " (路由: " << global_best.routing_cost
-        << ", 分配: " << global_best.assign_cost << ")\n";
+	out_file << "文件名, Alpha, 总成本, 路由成本, 分配成本, 运行时间(ms), 环路径\n";
+    // 遍历目录中的所有TSP文件
+    for (const auto& entry : fs::directory_iterator(TSP_DIR)) {
+        // 跳过非普通文件或非.tsp后缀的文件
+        if (!fs::is_regular_file(entry.path()) || entry.path().extension() != ".tsp")
+            continue;
 
-    // 输出环路径
-    cout << "\n环路径: 0";
-    for (int node : global_best.ring) {
-        if (node != 0) cout << " -> " << node; // 跳过重复的0
+        string filename = entry.path().string();
+        cout << "\n======= 处理文件: " << filename << " =======\n";
+
+        // 解析当前TSP文件
+        RSPGraph graph = parseTSPLIB(filename);
+        Solution global_best;
+        double min_cost = INF;
+		for (int alpha : ALPHAS) {
+			cout << "\n======= 测试 alpha = " << alpha << " =======\n";
+            Solution global_best;
+            double min_cost = INF;
+            // 记录开始时间
+            auto start_time = chrono::high_resolution_clock::now();
+            // 对当前文件执行多次独立求解
+            for (int run = 0; run < MAX_ITER; ++run) {
+                /*cout << "\n--- 运行 #" << run + 1 << " ---\n";*/
+                AMNSSolver solver(graph, alpha); // alpha
+                solver.solve(ITER_PER_RUN);
+
+                // 更新全局最优解
+                Solution current = solver.getBestSolution();
+                if (current.total_cost() < min_cost) {
+                    global_best = current;
+                    min_cost = current.total_cost();
+                }
+                cout << "迭代 #" << run << " 当前全局最优解成本: " << min_cost
+                    			<< " (路由: " << global_best.routing_cost
+                    			<< ", 分配: " << global_best.assign_cost << ")" << endl;
+            }
+            // 计算运行时间
+            auto end_time = chrono::high_resolution_clock::now();
+            auto duration = chrono::duration_cast<chrono::milliseconds>(end_time - start_time);
+            // 输出最终结果
+            cout << "\n​**​* 文件 " << filename <<"alpha="<<alpha << " 的最优解 ​**​*\n";
+            cout << "总成本: " << global_best.total_cost()
+                << "\n路由成本: " << global_best.routing_cost
+                << "\n分配成本: " << global_best.assign_cost
+                << "\n运行时间: " << duration.count() << " 毫秒" << endl;
+
+            // 构建环路径字符串
+            ostringstream ring_ss;
+            ring_ss << "0";
+            for (int node : global_best.ring) {
+                if (node != 0) ring_ss << " -> " << node;
+            }
+            cout << " -> 0" << endl;
+            // 存储结果
+            all_results.push_back({
+                filename,
+                alpha,
+                global_best.total_cost(),
+                global_best.routing_cost,
+                global_best.assign_cost,
+                duration.count(),
+                ring_ss.str()
+                });
+
+            // 立即写入当前结果到文件
+            out_file << filename << ","
+                << alpha << ","
+                << global_best.total_cost() << ","
+                << global_best.routing_cost << ","
+                << global_best.assign_cost << ","
+                << duration.count() << ",\""
+                << ring_ss.str() << "\"\n";  // 使用引号包裹环路径
+		}
+
+        
     }
-    cout << " -> 0" << endl;
-
-    // 输出分配关系
-    cout << "\n分配关系:" << endl;
-    for (int u = 0; u < graph.nodes.size(); ++u) {
-        if (!global_best.in_ring[u]) {
-            cout << "节点" << u << "\t→ 环节点" << global_best.assignments[u] << endl;
-        }
+    // 统一输出结果
+    cout << "\n\n======= 最终结果汇总 =======";
+    for (const auto& res : all_results) {
+        cout << "\n\n文件: " << res.filename
+            << "\nAlpha: " << res.alpha
+            << "\n总成本: " << res.total_cost
+            << "\n路由成本: " << res.routing_cost
+            << "\n分配成本: " << res.assign_cost
+            << "\n运行时间: " << res.duration_ms << "ms"
+            << "\n环路径: " << res.ring_path;
     }
+    // 关闭文件
+    out_file.close();
 
+    // 可选：在控制台显示保存路径
+    cout << "\n结果已保存至：results.csv" << endl;
+    cout << "\n\n======= 汇总结束 =======\n";
     return 0;
 }
