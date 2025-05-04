@@ -37,7 +37,8 @@ AMNSSolver::AMNSSolver(const RSPGraph& g, int a, int max_search_iter, double RCL
 
 void AMNSSolver::solve() { 
 	Solution current;
-	int solutionPoolSize = 10; // 初始解池大小
+	int solutionPoolSize = 5; // 初始解池大小
+    int GVNS_SIZE = 1;
 	current = greedy_construction(solutionPoolSize); // 生成贪婪初始解 Random_construction greedy_construction
     best = current;
     int search_iter = 0;
@@ -45,27 +46,26 @@ void AMNSSolver::solve() {
     Solution neighbor = variable_neighborhood_search(current); // 生成邻域解
     evaluate(neighbor);              // 重新计算新解的成本
     double delta = neighbor.total_cost() - current.total_cost();
-    if (delta < 0) {
+    if (delta < 0) { 
         current = neighbor;
         best = current;
     }
-    Solution after_GVNS=GVNS(neighbor, 1); // 执行GVNS
-	if (after_GVNS.total_cost() < best.total_cost()) {
-		best = after_GVNS;
-	}
+ //   Solution after_GVNS=GVNS(neighbor, GVNS_SIZE); // 执行GVNS
+	//if (after_GVNS.total_cost() < best.total_cost()) {
+	//	best = after_GVNS;
+	//}
+	enhanced_full_two_opt(best); // 执行全局2-opt
     cout << "in迭代 #" << " 当前最优解成本: " << best.total_cost()
         << " (路由: " << best.routing_cost
         << ", 分配: " << best.assign_cost << ")" << endl;
 }
-
+    
 Solution AMNSSolver::GVNS(Solution s, int maxIter) const {//基本无提升？
     Solution temp_best = s;
     for (int i = 0;i < maxIter;i++) {
         int k = rand() % 3; // 随机选择shake 长度
         Solution after_shake = shaking(s, k); // 执行扰动
-        evaluate(after_shake); // 评估扰动后的解
         Solution after_ls = local_search_VND(after_shake); // 执行局部搜索
-        evaluate(after_ls); // 评估局部搜索后的解
         if (after_ls.total_cost() < temp_best.total_cost()) {
             temp_best = after_ls; // 更新当前最优解
             s = after_ls;
@@ -176,10 +176,35 @@ Solution AMNSSolver::variable_neighborhood_search(Solution s) const {//1
     Solution best_sol = s;
     Solution improved = s;
     Solution temp = s;
-            temp = local_search_VND(s);//local_search_VND local_search_v2
-        if (best_sol.total_cost() > temp.total_cost()) {
-            best_sol = temp;
+    Solution current = s;
+    int stage = 0;//停滞次数
+    int max_stage = 3;
+    int tempbest = s.total_cost();
+    do {
+        tempbest = current.total_cost();
+        temp = local_search_VND(current);//local_search_VND local_search_v2
+        if (temp.total_cost() <= tempbest) {
+            if (temp.total_cost() == tempbest) {
+                stage++;
+                if (stage >= max_stage) {
+                    break; // 达到最大停滞次数，退出
+                }
+            }
+            else {
+                stage = 0; // 重置停滞计数器
+            }
+            tempbest = temp.total_cost();
+            improved = temp;
+            current = temp;
         }
+        else {
+            stage++;
+            break;
+        }
+    } while (true);
+    if (best_sol.total_cost() > tempbest) {
+        best_sol = improved;
+    }
     return best_sol;
 }
 
@@ -305,141 +330,144 @@ Solution AMNSSolver::local_search_v2(Solution s) const {//3
 //方法1 最速下降法，遍历所有邻域解，选择最优的邻域解
 
 
-Solution AMNSSolver::local_search_VND(Solution s) const {
-    const int max_iter = 4;    // 最大迭代次数
-    int k = 0;                 // 无改进迭代计数
-    bool isimprove = true;
-    do {
-        Solution best_in_phase = s;
-
-        // 顺序尝试不同邻域结构
-        for (int nh = 0; nh < max_iter; ++nh) {
-            Solution current_best = s;
-
-            // 对当前邻域结构进行充分搜索
-            switch (nh) {
-            case 0: { // 系统化节点删除
-                for (int i = 1; i < s.ring.size(); ++i) {
-                    Solution neighbor = s;
-                    drop_redistribute(neighbor, neighbor.ring[i]);
-                    evaluate(neighbor);
-                    if (neighbor.total_cost() < current_best.total_cost()) {
-                        current_best = neighbor;
-                    }
-                }
-                break;
-            }
-            case 1: { // 系统化节点添加
-                vector<int> candidates;
-                for (int i = 0; i < graph.nodes.size(); ++i) {
-                    if (!s.in_ring[i] && i != graph.depot) {
-                        candidates.push_back(i);
-                    }
-                }
-                for (int v : candidates) {
-                    Solution neighbor = s;
-                    insert_node(neighbor, v);
-                    evaluate(neighbor);
-                    if (neighbor.total_cost() < current_best.total_cost()) {
-                        current_best = neighbor;
-                    }
-                }
-                break;
-            }
-            //case 2: { // 2-opt优化
-            //    for (int i = 0; i < s.ring.size() - 2; ++i) {
-            //        for (int j = i + 2; j < s.ring.size(); ++j) {
-            //            Solution neighbor = s;
-            //            reverse(neighbor.ring.begin() + i + 1, neighbor.ring.begin() + j + 1);
-            //            evaluate(neighbor);
-            //            if (neighbor.total_cost() < current_best.total_cost()) {
-            //                current_best = neighbor;
-            //            }
-            //        }
-            //    }
-            //    break;
-            //}
-            case 3: { // 组合操作
-                vector<Solution> H = generate_add_drop_neighbors(s);
-                if (!H.empty()) {
-                    auto best = *min_element(H.begin(), H.end(),
-                        [](const auto& a, const auto& b) {
-                            return a.total_cost() < b.total_cost();
-                        });
-                    if (best.total_cost() < current_best.total_cost()) {
-                        current_best = best;
-                    }
-                }
-                break;
-            }
-            }
-            // 更新阶段最优解
-            if (current_best.total_cost() < best_in_phase.total_cost()) {
-                best_in_phase = current_best;
-                nh = -1; // 重置邻域结构顺序
-            }
-        }
-
-        // 判断是否接受改进
-        if (best_in_phase.total_cost() < s.total_cost()) {
-            s = best_in_phase;
-            isimprove = true;
-            k = 0;
-        }
-        else {
-            isimprove=false;
-        }
-
-    } while (isimprove);
-
-    return s;
-}
-
 //Solution AMNSSolver::local_search_VND(Solution s) const {
-//    int k = 0;
-//    int max_iter = 4;
-//    int localsearchMax = graph.nodes.size() / 5;
+//    const int max_iter = 4;    // 最大迭代次数
+//    int k = 0;                 // 无改进迭代计数
+//    bool isimprove = true;
 //    do {
-//        Solution local_best = s;
-//        int choose = rand() % max_iter;
-//        for (int i = 0;i < localsearchMax;i++) {
-//            vector<Solution> H;
-//            Solution temp = s;
-//            // 生成当前类型的邻域
-//            switch (choose) {
-//            case 0: temp = Random_drop_one2(s);
-//            case 1: temp = Random_add_one2(s);
-//            case 2: H = generate_random_add_drop_neighbors(s); break;
-//            case 3:temp = generate_random_2opt_neighbors(s); break;
-//            default:break;
-//            }
-//            evaluate(temp);
-//            if (temp.total_cost() < local_best.total_cost()) {
-//                // 计算当前邻域的解
-//                local_best = temp;
-//            }
-//            if (!H.empty()) {
-//                // 找到当前邻域中的最优解
-//                auto best_it = min_element(H.begin(), H.end(),
-//                    [](const auto& a, const auto& b) {
-//                        return a.total_cost() < b.total_cost();
-//                    });
-//                int temp_res = best_it->total_cost();
-//                if (temp_res < local_best.total_cost()) {
-//                    local_best = *best_it;
+//        Solution best_in_phase = s;
+//
+//        // 顺序尝试不同邻域结构
+//        for (int nh = 0; nh < max_iter; ++nh) {
+//            Solution current_best = s;
+//
+//            // 对当前邻域结构进行充分搜索
+//            switch (nh) {
+//            case 0: { // 系统化节点删除
+//                for (int i = 1; i < s.ring.size(); ++i) {
+//                    Solution neighbor = s;
+//                    drop_redistribute(neighbor, neighbor.ring[i]);
+//                    evaluate(neighbor);
+//                    if (neighbor.total_cost() < current_best.total_cost()) {
+//                        current_best = neighbor;
+//                    }
 //                }
+//                break;
+//            }
+//            case 1: { // 系统化节点添加
+//                vector<int> candidates;
+//                for (int i = 0; i < graph.nodes.size(); ++i) {
+//                    if (!s.in_ring[i] && i != graph.depot) {
+//                        candidates.push_back(i);
+//                    }
+//                }
+//                for (int v : candidates) {
+//                    Solution neighbor = s;
+//                    insert_node(neighbor, v);
+//                    evaluate(neighbor);
+//                    if (neighbor.total_cost() < current_best.total_cost()) {
+//                        current_best = neighbor;
+//                    }
+//                }
+//                break;
+//            }
+//            //case 2: { // 2-opt优化
+//            //    for (int i = 0; i < s.ring.size() - 2; ++i) {
+//            //        for (int j = i + 2; j < s.ring.size(); ++j) {
+//            //            Solution neighbor = s;
+//            //            reverse(neighbor.ring.begin() + i + 1, neighbor.ring.begin() + j + 1);
+//            //            evaluate(neighbor);
+//            //            if (neighbor.total_cost() < current_best.total_cost()) {
+//            //                current_best = neighbor;
+//            //            }
+//            //        }
+//            //    }
+//            //    break;
+//            //}
+//            case 3: { // 组合操作
+//                vector<Solution> H = generate_add_drop_neighbors(s);
+//                if (!H.empty()) {
+//                    auto best = *min_element(H.begin(), H.end(),
+//                        [](const auto& a, const auto& b) {
+//                            return a.total_cost() < b.total_cost();
+//                        });
+//                    if (best.total_cost() < current_best.total_cost()) {
+//                        current_best = best;
+//                    }
+//                }
+//                break;
+//            }
+//            }
+//            // 更新阶段最优解
+//            if (current_best.total_cost() < best_in_phase.total_cost()) {
+//                best_in_phase = current_best;
+//                nh = -1; // 重置邻域结构顺序
 //            }
 //        }
-//        // 如果找到改进解
-//        if (local_best.total_cost() < s.total_cost()) {
+//
+//        // 判断是否接受改进
+//        if (best_in_phase.total_cost() < s.total_cost()) {
+//            s = best_in_phase;
+//            isimprove = true;
 //            k = 0;
-//            s = local_best;
 //        }
-//        else k++;
-//    } while (k < max_iter);  // 只要任一邻域有改进就继续
+//        else {
+//            isimprove=false;
+//        }
+//
+//    } while (isimprove);
 //
 //    return s;
 //}
+
+
+//方法3 随机变量邻域搜索，使用VND进行局部搜索，直到没有改进为止
+Solution AMNSSolver::local_search_VND(Solution s) const {
+    int k = 0;
+    int max_iter = 4;
+    int itao = 2;
+    int localsearchMax = graph.nodes.size() / itao;
+    do {
+        Solution local_best = s;
+        int choose = rand() % max_iter;
+        for (int i = 0;i < localsearchMax;i++) {
+            vector<Solution> H;
+            Solution temp = s;
+            // 生成当前类型的邻域
+            switch (choose) {
+            case 0: temp = Random_drop_one2(s);
+            case 1: temp = Random_add_one2(s);
+            case 2: H = generate_random_add_drop_neighbors(s); break;
+            case 3:temp = generate_random_2opt_neighbors(s); break;
+            default:break;
+            }
+            evaluate(temp);
+            if (temp.total_cost() < local_best.total_cost()) {
+                // 计算当前邻域的解
+                local_best = temp;
+            }
+            if (!H.empty()) {
+                // 找到当前邻域中的最优解
+                auto best_it = min_element(H.begin(), H.end(),
+                    [](const auto& a, const auto& b) {
+                        return a.total_cost() < b.total_cost();
+                    });
+                int temp_res = best_it->total_cost();
+                if (temp_res < local_best.total_cost()) {
+                    local_best = *best_it;
+                }
+            }
+        }
+        // 如果找到改进解
+        if (local_best.total_cost() < s.total_cost()) {
+            k = 0;
+            s = local_best;
+        }
+        else k++;
+    } while (k < max_iter);  // 只要任一邻域有改进就继续
+
+    return s;
+}
 
 // 其他generate_xxx_neighbors函数类似修改
 
@@ -866,7 +894,7 @@ void AMNSSolver::enhanced_full_two_opt(Solution& s) const {
         improved = false;
         double best_gain = 0;
         int best_i = -1, best_j = -1;
-
+        double pregain = 0;
         // 遍历所有可能的边交换
         for (int i = 0; i < s.ring.size() - 1; ++i) {
             for (int j = i + 2; j < s.ring.size(); ++j) {
@@ -880,7 +908,7 @@ void AMNSSolver::enhanced_full_two_opt(Solution& s) const {
                 double gain = original - modified;
 
                 // 找到当前最优的交换
-                if (gain > 0) {
+                if (gain > 0&&gain>pregain) {
                     best_gain = gain;
                     best_i = i;
                     best_j = j;

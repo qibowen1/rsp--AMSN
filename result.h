@@ -8,5 +8,4 @@ struct Result {
     double assign_cost;
     double duration_s;
 	double offset;//与基准的偏差
-    std::string ring_path;
 };
