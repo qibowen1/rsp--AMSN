@@ -13,7 +13,7 @@ const double INF = numeric_limits<double>::max(); // 定义无穷大常量
 
 int main() {
     std::srand(std::time(nullptr));  // 用当前时间初始化种子
-	const int MAX_ITER = 80; // 每个文件的最大迭代次数
+	const int MAX_ITER = 50; // 每个文件的最大迭代次数
 	const int MAX_SEARCH_ITER = 1; // 每个初始解的迭代次数
     const vector<int> ALPHAS = { 3,5,7,9 };  // 需要测试的alpha值列表
 	double RCL_ratio = 0.8; // RCL比例  
@@ -49,7 +49,6 @@ int main() {
         string filename_output = entry.path().filename().string(); // 例如"st70.tsp"
         string filename = entry.path().string();// 完整路径
         cout << "\n======= 处理文件: " << filename_output << " =======\n";
-
         // 解析当前TSP文件
         RSPGraph graph = parseTSPLIB(filename);
         Solution global_best;
@@ -73,32 +72,21 @@ int main() {
             // 记录开始时间
             auto start_time = chrono::high_resolution_clock::now();
             // 对当前文件执行多次独立求解
-            for (int run = 0; run < MAX_ITER; ++run) {
                 AMNSSolver solver(graph, alpha, MAX_SEARCH_ITER,RCL_ratio,neighborhood_types); // alpha
-                solver.solve();
+                solver.solve(benchmark_opt, MAX_ITER);
                 // 更新全局最优解
                 Solution current = solver.getBestSolution();
                 if (current.total_cost() < min_cost) {
                     global_best = current;
                     min_cost = current.total_cost();
                 }
-                cout << "迭代 #" << run << " 当前全局最优解成本: " << min_cost
-                    			<< " (路由: " << global_best.routing_cost
-                    			<< ", 分配: " << global_best.assign_cost << ")" << endl;
-                // 检查是否达到基准
-                if (min_cost == benchmark_opt) {
-                    cout << "★ 达到基准最优 " << benchmark_opt << "，提前终止 ★" << endl;
-                    early_stop = true;
-                    break;
-                }
-            }
             // 计算运行时间
             auto end_time = chrono::high_resolution_clock::now();
              auto duration = chrono::duration_cast<chrono::duration<double>>(end_time - start_time);
             double duration_sec = duration.count();
 			double offset = 100*(global_best.total_cost() - benchmark_opt)/ benchmark_opt;
             // 输出最终结果
-            cout << fixed << setprecision(2);  // 固定小数位数，保留2位
+            
             cout << "\n​**​* 文件 " << filename_output <<"alpha="<<alpha << " 的最优解 ​**​*\n";
             cout << "总成本: " << global_best.total_cost()
                 << "\n路由成本: " << global_best.routing_cost
@@ -118,6 +106,7 @@ int main() {
                 });
 
             // 立即写入当前结果到文件
+
             out_file << filename_output << ","
                 << alpha << ","
                 << global_best.total_cost() << ","
@@ -127,8 +116,6 @@ int main() {
                 << offset << "\",\"";
             out_file << "\"\n";  // 结束引号和换行
 		}
-
-        
     }
     // 统一输出结果
     cout << "\n\n======= 最终结果汇总 =======";
