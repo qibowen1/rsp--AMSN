@@ -229,7 +229,6 @@ Solution AMNSSolver::variable_neighborhood_VNS(Solution s) const {//2
     do {
         // Shaking阶段：根据当前k值生成扰动解
         Solution shaken_sol = shaking(current, k);
-        evaluate(shaken_sol); // 评估扰动解
         // 使用VND进行局部搜索（使用您现有的local_search_v2）
         Solution local_optima = local_search_VND(shaken_sol,true);
 
@@ -249,11 +248,10 @@ Solution AMNSSolver::variable_neighborhood_VNS(Solution s) const {//2
 
 
 //方法3 随机变量邻域搜索，使用VND进行局部搜索，直到没有改进为止
-Solution AMNSSolver::local_search_VND(Solution s, bool fastmodel) const {
+Solution AMNSSolver::local_search_VND(Solution s, bool fast_model) const {
     int k = 0;
-    int max_iter = 4;
-    int itao = 2;
-    int localsearchMax = graph.nodes.size() / itao;
+    const int max_iter = fast_model ? 3 : 5; // 根据模式调整迭代次数
+    const int localsearchMax = fast_model ? graph.nodes.size() / 5 : graph.nodes.size() / 3;
     do {
         Solution local_best = s;
         int choose = rand() % max_iter;
@@ -262,27 +260,16 @@ Solution AMNSSolver::local_search_VND(Solution s, bool fastmodel) const {
             Solution temp = s;
             // 生成当前类型的邻域
             switch (choose) {
-            case 0: temp = Random_drop_one2(s);
-            case 1: temp = Random_add_one2(s);
-            case 2: H = generate_random_add_drop_neighbors(s); break;
-            case 3:temp = generate_random_2opt_neighbors(s); break;
+            case 0: temp = Random_drop_one2(s);break;
+            case 1: temp = Random_add_one2(s);break;
+            case 2: temp = generate_random_add_drop_neighbors(s); break;
+            case 3: temp = generate_random_2opt_neighbors(s); break;
             default:break;
             }
             evaluate(temp);
             if (temp.total_cost() < local_best.total_cost()) {
                 // 计算当前邻域的解
                 local_best = temp;
-            }
-            if (!H.empty()) {
-                // 找到当前邻域中的最优解
-                auto best_it = min_element(H.begin(), H.end(),
-                    [](const auto& a, const auto& b) {
-                        return a.total_cost() < b.total_cost();
-                    });
-                int temp_res = best_it->total_cost();
-                if (temp_res < local_best.total_cost()) {
-                    local_best = *best_it;
-                }
             }
         }
         // 如果找到改进解
@@ -299,22 +286,21 @@ Solution AMNSSolver::local_search_VND(Solution s, bool fastmodel) const {
 
 
 //random
-vector<Solution> AMNSSolver::generate_random_add_drop_neighbors(Solution s) const {
-    vector<Solution> neighbors;
+Solution AMNSSolver::generate_random_add_drop_neighbors(Solution s) const {
     Solution neighbor = s;
-    int temp = neighbor.total_cost();
+    Solution res = s;
+    int temp = s.total_cost();
     Random_drop_one(neighbor);
-    evaluate(neighbor);
     if (neighbor.total_cost() < temp) {
-        neighbors.push_back(neighbor);
+		temp = neighbor.total_cost();
+        res = neighbor;
     }
     Random_add_one(neighbor);
-    evaluate(neighbor);
     if (neighbor.total_cost() < temp) {
-        neighbors.push_back(neighbor);
+        res = neighbor;
     }
 
-    return neighbors;
+    return res;
 }
 
 
