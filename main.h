@@ -3,6 +3,7 @@
 #include "tsplib_parser.h"
 #include "result.h"
 #include "benchmark_loader.h"
+#include "lkh_wrapper.h"
 #include <iostream>
 #include <vector>
 #include <cmath>

@@ -15,11 +15,12 @@ int main() {
     std::srand(std::time(nullptr));  // 用当前时间初始化种子
 	const int MAX_ITER = 50; // 每个文件的最大迭代次数
 	const int MAX_SEARCH_ITER = 1; // 每个初始解的迭代次数
-    const vector<int> ALPHAS = { 3,5,7,9 };  // 需要测试的alpha值列表
+    const vector<int> ALPHAS = { 5,7,9 };  // 需要测试的alpha值列表
 	double RCL_ratio = 0.8; // RCL比例  
 	int neighborhood_types = 5; // 邻域类型数量    
     std::unordered_map<BenchmarkKey, double> benchmark_map;
     const string TSP_DIR = "E:/code/c/c++/input_data/tsp_part"; // 修改为你的TSP目录路径
+	const string TSP_TOUR_DIR = "E:/code/c/c++/out_tour"; // alpha=3时的LKH输出目录
     vector<Result> all_results;  // 存储所有结果
     load_benchmark_data("E:/code/c/c++/opt.txt", benchmark_map);
 
