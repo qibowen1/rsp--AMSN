@@ -13,6 +13,8 @@ private:
 	Solution best;
 	static const int VNS_MAX_LEVEL = 1;
 
+	unordered_map<int, vector<int>> static_near_cache; // 静态缓存：节点到所有节点的最近距离排序
+
 
 public:
 	AMNSSolver(const RSPGraph& g, int a, int max_search_iter, double RCL_ratio, int neighborhood_types);
@@ -20,6 +22,7 @@ public:
 	Solution getBestSolution() const;
 
 private:
+	void build_static_cache(int k);
 	//初始解
 	Solution greedy_construction(int solutionPoolSize) const;
 
@@ -43,6 +46,15 @@ private:
 
 	Solution exhaustive_two_opt(Solution s) const;
 
+	Solution exhaustive_cache_add_node(Solution s) const;
+
+	Solution batch_add_nodes(Solution s, int batch_size) const;
+
+	Solution batch_drop_nodes(Solution s, int batch_size) const;
+
+	Solution fast_swap_ring_nonring(Solution s) const;
+
+	double accumulate_assigned_cost(const Solution& s, int ring_node) const;
 	//领域随机解
 
 	Solution generate_random_add_drop_neighbors(Solution s) const;
@@ -68,6 +80,8 @@ private:
 	int random_unused_node(const Solution& s) const;
 
 	void insert_node(Solution& s, int v) const;
+
+	void insert_cache_node(Solution& s, int v) const;
 
 	void evaluate(Solution& s) const;
 

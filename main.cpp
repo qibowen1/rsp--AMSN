@@ -13,7 +13,7 @@ const double INF = numeric_limits<double>::max(); // 定义无穷大常量
 
 int main() {
     std::srand(std::time(nullptr));  // 用当前时间初始化种子
-	const int MAX_ITER = 50; // 每个文件的最大迭代次数
+	const int MAX_ITER = 25; // 每个文件的最大迭代次数
 	const int MAX_SEARCH_ITER = 1; // 每个初始解的迭代次数
     const vector<int> ALPHAS = { 5,7,9 };  // 需要测试的alpha值列表
 	double RCL_ratio = 0.8; // RCL比例  
@@ -29,10 +29,22 @@ int main() {
     time_t now_time = chrono::system_clock::to_time_t(now);
     struct tm local_time;
     localtime_s(&local_time, &now_time);  // Windows安全版本
+    // 创建日期格式的文件夹名 (年月日)
+    ostringstream dirname_ss;
+    dirname_ss << "E:/code/c/c++/rsp-result/results_"
+        << put_time(&local_time, "%Y%m%d");  // 年月日
+
+    // 创建文件夹
+    filesystem::path dir_path(dirname_ss.str());
+    if (!filesystem::exists(dir_path)) {
+        filesystem::create_directories(dir_path);
+    }
+    // 创建带时间的文件名
     ostringstream filename_ss;
-    filename_ss << "E:/code/c/c++/rsp-result/results_"
+    filename_ss << dirname_ss.str() << "/results_"
         << put_time(&local_time, "%m%d_%H%M")  // 月日_时分
-        << ".csv";
+        << ".xlsx";
+
     // 创建并打开输出文件
     ofstream out_file(filename_ss.str());
     if (!out_file) {
