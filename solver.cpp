@@ -156,10 +156,13 @@ Solution AMNSSolver::greedy_construction(int solutionPoolSize) const {
 }
 
 Solution AMNSSolver::variable_neighborhood_VNS(Solution s) const {//2
-    const int k_max = 9; // 动态上限graph.nodes.size()*0.05
+    const int k_max = graph.nodes.size() * 0.1; // 动态上限graph.nodes.size()*0.05
     int k = 1;
     Solution best_sol = s;
-    Solution current = local_search_FULL_VND(s, false);//快速
+	int no_improve = 0;
+	int max_no_improve = 5; // 最大不改善次数
+    Solution current = s;
+    //Solution current = local_search_FULL_VND(s, false);//快速
     cout << "VNS后解成本: " << current.total_cost() << endl;
     do {
         // Shaking阶段：根据当前k值生成扰动解
@@ -172,9 +175,15 @@ Solution AMNSSolver::variable_neighborhood_VNS(Solution s) const {//2
             best_sol = local_optima;
             current = local_optima;
             k = 1;
+			no_improve = 0; // 重置不改善次数
         }
         else {
+			no_improve++;
             k ++;  // 循环扰动强度
+        }
+        if (no_improve > max_no_improve) {
+			cout << "没有改善，停止搜索" << endl;
+			break;
         }
     } while (k <= k_max);
     cout << "shake+vns后的成本: " << current.total_cost() << endl;
@@ -182,84 +191,8 @@ Solution AMNSSolver::variable_neighborhood_VNS(Solution s) const {//2
 }
 
 
-//方法3 随机变量邻域搜索，使用VND进行局部搜索，直到没有改进为止
-
-//Solution AMNSSolver::local_search_VND(Solution s, bool fast_model) const {
-//    int k = 0;
-//    const int max_iter = fast_model ? 3 : 5; // 根据模式调整迭代次数
-//    const int localsearchMax = fast_model ? graph.nodes.size() / 5 : graph.nodes.size() / 2;
-//    do {
-//        Solution local_best = s;
-//        int choose = rand() % max_iter;
-//        for (int i = 0;i < localsearchMax;i++) {
-//            vector<Solution> H;
-//            Solution temp = s;
-//            // 生成当前类型的邻域
-//            switch (choose) {
-//            case 0: temp = Random_drop_one2(s);break;
-//            case 1: temp = Random_add_one2(s);break;
-//            case 2: temp = generate_random_add_drop_neighbors(s); break;
-//            case 3: temp = generate_random_2opt_neighbors(s); break;
-//            default:break;
-//            }
-//            evaluate(temp);
-//            if (temp.total_cost() < local_best.total_cost()) {
-//                // 计算当前邻域的解
-//                local_best = temp;
-//            }
-//        }
-//        // 如果找到改进解
-//        if (local_best.total_cost() < s.total_cost()) {
-//            k = 0;
-//            s = local_best;
-//        }
-//        else k++;
-//    } while (k < max_iter);  // 只要任一邻域有改进就继续
-//
-//    return s;
-//}
-
-Solution AMNSSolver::local_search_VND(Solution s, bool fast_model) const {
-    const int NEIGHBORHOOD_TYPES = 4; // 邻域类型数量
-    int k = 0; // 当前邻域索引
-
-    while (k < NEIGHBORHOOD_TYPES) {
-        Solution current_best = s;
-        bool improved = false;
-        const int max_trials = fast_model ? graph.nodes.size() / 4 : graph.nodes.size();
-
-        for (int i = 0; i < max_trials; ++i) {
-            Solution neighbor = s;
-
-            // 显式调用不同邻域操作
-            switch (k) {
-            case 3: neighbor = generate_random_2opt_neighbors(s); break;
-            case 0: neighbor = Random_add_one2(s); break;
-            case 1: neighbor = Random_drop_one2(s); break;
-            case 2: neighbor = generate_random_add_drop_neighbors(s); break;
-            }
-
-            evaluate(neighbor);
-            if (neighbor.total_cost() < current_best.total_cost()) {
-                current_best = neighbor;
-                improved = true;
-            }
-        }
-
-        if (improved) {
-            s = current_best;
-            k = 0; // 重置到第一个邻域
-        }
-        else {
-            k++;    // 尝试下一个邻域
-        }
-    }
-
-    return s;
-}
-
 Solution AMNSSolver::local_search_FULL_VND(Solution s, bool fast_model) const {
-    const int NEIGHBORHOOD_TYPES = 6;
+    const int NEIGHBORHOOD_TYPES = 5;
     int k = 0;
 
     while (k < NEIGHBORHOOD_TYPES) {
@@ -269,10 +202,9 @@ Solution AMNSSolver::local_search_FULL_VND(Solution s, bool fast_model) const {
             switch (k) {
             case 0: neighbor = exhaustive_add_node(s); break;
             case 1: neighbor = exhaustive_drop_node(s); break;
-            case 2: neighbor = exhaustive_add_drop(s); break;
-			case 3: neighbor = batch_drop_nodes(s,3); break;
-            case 4: neighbor = batch_add_nodes(s,3); break;
-            case 5: neighbor = exhaustive_two_opt(s); break;
+            case 2:neighbor = fast_swap_ring_nonring(s); break;
+            case 3: neighbor = exhaustive_add_drop(s); break;
+            case 4: neighbor = exhaustive_two_opt(s); break;
             default:break;
             }
 
@@ -296,7 +228,7 @@ Solution AMNSSolver::local_search_FULL_VND(Solution s, bool fast_model) const {
 //all
 Solution AMNSSolver::exhaustive_add_node(Solution s) const {
     Solution best_solution = s;
-    double min_cost = s.total_cost();
+	double min_cost = INF;//不一定比s小，后面以概率接受 如果比s小 换成s.total_cost()
 
     // 遍历所有非环节点
     for (int v = 0; v < graph.nodes.size(); ++v) {
@@ -318,7 +250,7 @@ Solution AMNSSolver::exhaustive_add_node(Solution s) const {
 
 Solution AMNSSolver::exhaustive_cache_add_node(Solution s) const {
     Solution best_solution = s;
-    double min_cost = s.total_cost();
+    double min_cost = INF;
 
     // 遍历所有非环节点
     for (int v = 0; v < graph.nodes.size(); ++v) {
@@ -342,7 +274,7 @@ Solution AMNSSolver::exhaustive_drop_node(Solution s) const {
     if (s.ring.size() <= 3) return s; // 保持最小环大小
 
     Solution best_solution = s;
-    double min_cost = s.total_cost();
+    double min_cost = INF;
 
     // 遍历所有非depot的环节点
     for (size_t pos = 1; pos < s.ring.size(); ++pos) {
@@ -393,10 +325,10 @@ Solution AMNSSolver::exhaustive_drop_node(Solution s) const {
 
 Solution AMNSSolver::exhaustive_add_drop(Solution s) const {
     Solution best_solution = s;
-
+	double min_cost = INF;
     // 先尝试所有可能的删除
     Solution after_drop = exhaustive_drop_node(s);
-    if (after_drop.total_cost() < best_solution.total_cost()) {
+    if (after_drop.total_cost() < min_cost) {//best_solution.total_cost()
         best_solution = after_drop;
     }
 

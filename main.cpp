@@ -43,7 +43,7 @@ int main() {
     ostringstream filename_ss;
     filename_ss << dirname_ss.str() << "/results_"
         << put_time(&local_time, "%m%d_%H%M")  // 月日_时分
-        << ".xlsx";
+        << ".csv";
 
     // 创建并打开输出文件
     ofstream out_file(filename_ss.str());
