@@ -39,6 +39,7 @@ AMNSSolver::AMNSSolver(const RSPGraph& g, int a, int max_search_iter, double RCL
 
 void AMNSSolver::solve(int benchmark_opt, int MAX_ITER) {
 	double min_cost = INF;
+    glo_benchmark_opt = benchmark_opt;
 	build_static_cache(5); // 预计算静态缓存，k=5
     for (int run = 0; run < MAX_ITER; ++run) {
         Solution temp_best;
@@ -91,6 +92,7 @@ void AMNSSolver::build_static_cache(int k){
         }
     }
 }
+
 
 Solution AMNSSolver::getBestSolution() const {
     return best; // 返回当前最优解 
@@ -156,8 +158,10 @@ Solution AMNSSolver::greedy_construction(int solutionPoolSize) const {
 }
 
 Solution AMNSSolver::variable_neighborhood_VNS(Solution s) const {//2
-    const int k_max = graph.nodes.size() * 0.1; // 动态上限graph.nodes.size()*0.05
+    const int k_max= graph.nodes.size() * 0.18; // 动态上限graph.nodes.size()*0.05
     int k = 1;
+    int total_iter = 1000;
+    int it = 0;
     Solution best_sol = s;
 	int no_improve = 0;
 	int max_no_improve = 5; // 最大不改善次数
@@ -169,7 +173,8 @@ Solution AMNSSolver::variable_neighborhood_VNS(Solution s) const {//2
         Solution shaken_sol = shaking(current, k); //current  shaking(current, k)
         // 使用VND进行局部搜索
         Solution local_optima = local_search_FULL_VND(shaken_sol,false);//时间有点长
-
+        it++;
+		//cout << "迭代第#" << it << "次，成本为：" << local_optima.total_cost()<<" 全局最优："<<best_sol.total_cost() << endl;
         // 接受准则
         if (local_optima.total_cost() < best_sol.total_cost()) {
             best_sol = local_optima;
@@ -181,10 +186,13 @@ Solution AMNSSolver::variable_neighborhood_VNS(Solution s) const {//2
 			no_improve++;
             k ++;  // 循环扰动强度
         }
-        if (no_improve > max_no_improve) {
-			cout << "没有改善，停止搜索" << endl;
-			break;
+        if (it > total_iter) {
+            cout << "超过最大次数,退出" << endl;
         }
+        //if (best.total_cost() == glo_benchmark_opt) {
+        //    cout << "★ 达到基准最优 " << glo_benchmark_opt << "，提前终止 ★" << endl;
+        //    break;
+        //}
     } while (k <= k_max);
     cout << "shake+vns后的成本: " << current.total_cost() << endl;
     return best_sol;
@@ -200,10 +208,10 @@ Solution AMNSSolver::local_search_FULL_VND(Solution s, bool fast_model) const {
         bool improved = false;
             Solution neighbor = s;
             switch (k) {
-            case 0: neighbor = exhaustive_add_node(s); break;
+            case 0: neighbor = exhaustive_cache_add_node(s); break;// exhaustive_cache_add_node exhaustive_add_node
             case 1: neighbor = exhaustive_drop_node(s); break;
             case 2:neighbor = fast_swap_ring_nonring(s); break;
-            case 3: neighbor = exhaustive_add_drop(s); break;
+            case 3: neighbor = exhaustive_cache_add_drop(s); break; //exhaustive_cache_add_drop  exhaustive_add_drop
             case 4: neighbor = exhaustive_two_opt(s); break;
             default:break;
             }
@@ -334,6 +342,24 @@ Solution AMNSSolver::exhaustive_add_drop(Solution s) const {
 
     // 再尝试所有可能的添加
     Solution after_add = exhaustive_add_node(after_drop);
+    if (after_add.total_cost() < best_solution.total_cost()) {
+        best_solution = after_add;
+    }
+
+    return best_solution;
+}
+
+Solution AMNSSolver::exhaustive_cache_add_drop(Solution s) const {
+    Solution best_solution = s;
+    double min_cost = INF;
+    // 先尝试所有可能的删除
+    Solution after_drop = exhaustive_drop_node(s);
+    if (after_drop.total_cost() < min_cost) {//best_solution.total_cost()
+        best_solution = after_drop;
+    }
+
+    // 再尝试所有可能的添加
+    Solution after_add = exhaustive_cache_add_node(after_drop);
     if (after_add.total_cost() < best_solution.total_cost()) {
         best_solution = after_add;
     }

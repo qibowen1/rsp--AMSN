@@ -11,6 +11,7 @@ private:
 	double RCL_ratio;// RCL比例
 	int neighborhood_types;
 	Solution best;
+	int glo_benchmark_opt;
 	static const int VNS_MAX_LEVEL = 1;
 
 	unordered_map<int, vector<int>> static_near_cache; // 静态缓存：节点到所有节点的最近距离排序
@@ -47,6 +48,8 @@ private:
 	Solution exhaustive_two_opt(Solution s) const;
 
 	Solution exhaustive_cache_add_node(Solution s) const;
+
+	Solution exhaustive_cache_add_drop(Solution s) const;
 
 	Solution batch_add_nodes(Solution s, int batch_size) const;
 

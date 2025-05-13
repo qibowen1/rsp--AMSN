@@ -87,6 +87,7 @@ int main() {
             // 对当前文件执行多次独立求解
                 AMNSSolver solver(graph, alpha, MAX_SEARCH_ITER,RCL_ratio,neighborhood_types); // alpha
                 solver.solve(benchmark_opt, MAX_ITER);
+
                 // 更新全局最优解
                 Solution current = solver.getBestSolution();
                 if (current.total_cost() < min_cost) {
