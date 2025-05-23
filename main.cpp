@@ -85,7 +85,8 @@ int main() {
             // 记录开始时间
             auto start_time = chrono::high_resolution_clock::now();
             // 对当前文件执行多次独立求解
-                AMNSSolver solver(graph, alpha, MAX_SEARCH_ITER,RCL_ratio,neighborhood_types); // alpha
+                AMNSSolver solver(graph, alpha, MAX_SEARCH_ITER,RCL_ratio,neighborhood_types, filename_stem); // alpha
+                
                 solver.solve(benchmark_opt, MAX_ITER);
 
                 // 更新全局最优解
@@ -139,7 +140,8 @@ int main() {
             << "\n总成本: " << res.total_cost
             << "\n路由成本: " << res.routing_cost
             << "\n分配成本: " << res.assign_cost
-            << "\n运行时间: " << res.duration_s << "s";
+            << "\n运行时间: " << res.duration_s << "s"
+            <<"\n差额: "<<res.offset;
     }
     // 关闭文件
     out_file.close();

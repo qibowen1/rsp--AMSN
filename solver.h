@@ -1,15 +1,19 @@
 #pragma once
 #include "rsp_graph.h"
 #include <memory>
+#include <string>
 using namespace std;
 
 class AMNSSolver {
+public:
+	
 private:
 	RSPGraph graph;
 	int alpha;
 	int max_search_iter;
 	double RCL_ratio;// RCL比例
 	int neighborhood_types;
+	string filename;
 	Solution best;
 	int glo_benchmark_opt;
 	static const int VNS_MAX_LEVEL = 1;
@@ -18,7 +22,9 @@ private:
 
 
 public:
-	AMNSSolver(const RSPGraph& g, int a, int max_search_iter, double RCL_ratio, int neighborhood_types);
+	AMNSSolver(const RSPGraph& g, int a, int max_search_iter,
+		double RCL_ratio, int neighborhood_types,
+		std::string filename);
 	void solve(int benchmark_opt, int MAX_ITER);
 	Solution getBestSolution() const;
 
@@ -27,6 +33,9 @@ private:
 	//初始解
 	Solution greedy_construction(int solutionPoolSize) const;
 
+	Solution sample_greedy_construction(int solutionPoolSize) const;
+
+
 	//localsearch
 
 
@@ -34,7 +43,6 @@ private:
 
 	Solution shaking(Solution s, int k) const;
 
-	Solution local_search_VND(Solution s, bool fastmodel) const;//VDN
 
 	Solution local_search_FULL_VND(Solution s, bool fast_model) const;//完全遍历
 
@@ -46,6 +54,11 @@ private:
 	Solution exhaustive_add_drop(Solution s) const;
 
 	Solution exhaustive_two_opt(Solution s) const;
+
+	// 在AMNSSolver类中添加
+
+	Solution randomized_three_opt(Solution s) const;
+
 
 	Solution exhaustive_cache_add_node(Solution s) const;
 

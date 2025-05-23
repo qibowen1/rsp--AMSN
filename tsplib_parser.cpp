@@ -79,23 +79,4 @@ RSPGraph parseTSPLIB(const string& filename) {
     return graph;
 }
 
-Solution parse_lkh_tour(const string& tour_file, const RSPGraph& graph) {
-    Solution solution;
-    ifstream fin(tour_file);
-    string line;
-	AMNSSolver solver(graph, 3, 0, 0, 0); // 创建一个AMNSSolver实例
-
-    // 跳过文件头直到 TOUR_SECTION
-    while (getline(fin, line) && line != "TOUR_SECTION");
-
-    // 读取路径节点
-    vector<int> tour;
-    int node;
-    while (fin >> node && node != -1) {
-        tour.push_back(node - 1);  // 转换为 0-based 索引
-    }
-
-	solution.ring = tour;  // 保存环
-    return solution;
-}
 
